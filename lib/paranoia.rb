@@ -102,10 +102,16 @@ module Paranoia
     end
 
     destroyed_associations.each do |association|
-      association = send(association.name)
+      association_data = send(association.name)
 
-      if association.paranoid?
-        association.only_deleted.each { |record| record.restore(:recursive => true) }
+      unless association_data.nil?
+        if association_data.paranoid?
+          if association.collection?
+            association_data.only_deleted.each { |record| record.restore(:recursive => true) }
+          else
+            association_data.restore(:recursive => true)
+          end
+        end
       end
     end
   end
@@ -120,7 +126,11 @@ class ActiveRecord::Base
     class_attribute :paranoia_column
 
     self.paranoia_column = options[:column] || :deleted_at
-    default_scope { where(paranoia_column => nil) }
+
+    # INFO: Here is addon that allows to turn on/off this scope for specific request by thread variables
+    #       Be careful with thread variables.
+    #       It it recommended to set this variable to nil before each request at ApplicationController
+    default_scope { Thread.current[:paranoia_show_deleted_records] ? all : where(paranoia_column => nil) }
 
     before_restore {
       self.class.notify_observers(:before_restore, self) if self.class.respond_to?(:notify_observers)
